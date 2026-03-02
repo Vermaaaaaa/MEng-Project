@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+data/broad_data
+data/broad
+notebooks/test.ipynb
+scripts/01_undisturbed_slow_rotation_A_cleaned.hdf5
+scripts/06_undisturbed_fast_rotation_A_cleaned.hdf5
+scripts/37_disturbed_office_A_cleaned.hdf5
