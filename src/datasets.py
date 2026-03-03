@@ -1,10 +1,9 @@
 import torch
 from torch.utils.data import Dataset
 import h5py
+import numpy as np
+import os
 
-
-# ''' TODO ''' 
-# Normalise the data
 
 class BroadDataset(Dataset):
     def __init__(self, filepaths, mode, window, stride=None, dtype=torch.float32, transform=None):
@@ -23,9 +22,13 @@ class BroadDataset(Dataset):
         self._handles = {}
         self.index = []
 
-        self.noise_x = 0.10
-        self.noise_y = 0.09
-        self.noise_z = 0.12
+        self.norm_path = '/content/norm.pt' # Edit to actual path when running
+
+        self.mean_u, self.std_u = self._init_normalisation()
+
+        self.noise_x = 0.10 / self.std_u[0]
+        self.noise_y = 0.09 / self.std_u[1]
+        self.noise_z = 0.12 / self.std_u[2]
 
 
         with h5py.File(filepaths[0], 'r') as file:
@@ -68,10 +71,13 @@ class BroadDataset(Dataset):
             imu_gyr = file['imu_gyr'][start:end]
             opt_quat = file['opt_quat'][start:end]
 
-            noise = self.generate_noise()
-
             imu_gyr = torch.as_tensor(imu_gyr, dtype=self.dtype)
             opt_quat = torch.as_tensor(opt_quat, dtype=self.dtype)
+
+            imu_gyr = (imu_gyr - self.mean_u) / self.std_u
+
+            noise = self._generate_noise()
+
             imu_gyr = imu_gyr + noise
 
         else:
@@ -86,6 +92,8 @@ class BroadDataset(Dataset):
             imu_gyr = torch.as_tensor(imu_gyr, dtype=self.dtype)
             opt_quat = torch.as_tensor(opt_quat, dtype=self.dtype)
 
+            imu_gyr = (imu_gyr - self.mean_u) / self.std_u
+
 
         sample = {
             'imu_gyr': imu_gyr, 
@@ -98,11 +106,44 @@ class BroadDataset(Dataset):
            sample = self.transform(sample)
         return sample
     
-    def generate_noise(self):
+    def _generate_noise(self):
         std = torch.tensor([self.noise_x, self.noise_y, self.noise_z]).expand(self.window, 3)
         noise = torch.normal(mean=0., std=std)
 
         return noise
+    
+    def _init_normalisation(self):
+        if os.path.exists(self.norm_path):
+            print('path exists')
+            data = torch.load(self.norm_path)
+            return data['mean'], data['std']
+
+        print('Normalisation Factors do not exist, computing...')
+        if self.mode == 'train':
+            total = 0
+            total_sum_of_squares = 0
+            length = 0
+            for filepath in self.filepaths:
+                with h5py.File(filepath, 'r') as file:
+                    imu_gyr = file['imu_gyr']
+                    imu_gyr = np.array(imu_gyr)
+                    imu_gyr = torch.as_tensor(imu_gyr)
+                    total += imu_gyr.sum(dim=0)
+                    total_sum_of_squares += (imu_gyr**2).sum(dim=0)
+                    length += imu_gyr.shape[0]
+
+            
+            mean = total / length
+            std = (total_sum_of_squares / length - mean**2).sqrt()
+
+            data = {'mean': mean, 'std': std}
+            torch.save(data, 'norm.pt')
+
+            return mean, std
+        
+        print('Cannot Normalise on val/test set, run trainset first')
+        return 0,0
+    
 
     def __del__(self):
         for file in self._handles.values():
