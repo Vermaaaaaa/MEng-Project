@@ -140,9 +140,8 @@ class BroadDataset(Dataset):
             torch.save(data, 'norm.pt')
 
             return mean, std
-        
-        print('Cannot Normalise on val/test set, run trainset first')
-        return 0,0
+    
+        return FileNotFoundError('Cannot Normalise on val/test set, run trainset first')
     
 
     def __del__(self):
