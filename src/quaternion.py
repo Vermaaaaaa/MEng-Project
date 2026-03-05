@@ -1,10 +1,66 @@
 import torch
 
+class TensorMixin:
+    def norm(self):
+        return torch.linalg.vector_norm(self._data)
+    def unit(self):
+        return type(self)(self._data / self.norm())
+    def __repr__(self):
+        return f"{type(self)}: {self._data}"
+    
 
-class QuaternionTensor:
+class GyroTensor(TensorMixin):
     def __init__(self, data: torch.tensor):
-        assert data.shape[-1] == 4, 'Dim must be 4'
+        assert data.shape[-1] == 3, 'Gyro Dim must be 3'
+        self._data = torch.as_tensor(data , dtype=torch.float64)
+    
+    @property
+    def x(self):
+        return self._data[0]
+    
+    @x.setter
+    def x(self, value):
+        self._data[0] = value
 
+    @property
+    def y(self):
+        return self._data[1]
+    
+    @y.setter
+    def y(self, value):
+        self._data[1] = value
+
+    @property
+    def z(self):
+        return self._data[2]
+    
+    @z.setter
+    def z(self, value):
+        self._data[2] = value
+
+    def deltaQuatFromGyro(self, dt):
+        epsilon = 1e-12 #some aribtrary value to avoid floating point error
+    
+        theta = self.norm() * dt
+
+        if theta < epsilon:
+            return QuaternionTensor(torch.tensor([1,0,0,0]))
+
+        u = self.unit()
+
+        s = torch.sin(theta*0.5)
+        c = torch.cos(theta*0.5)
+
+        dq = QuaternionTensor(torch.tensor([c, u.x*s, u.y*s, u.z*s]))
+
+        dq = dq.unit()
+
+        return dq
+
+
+class QuaternionTensor(TensorMixin):
+    def __init__(self, data: torch.tensor):
+        assert data.shape[-1] == 4, 'Quaternion Dim must be 4'
         self._data = torch.as_tensor(data, dtype=torch.float64)
     
     @property
@@ -39,19 +95,12 @@ class QuaternionTensor:
     def z(self, value):
         self._data[3] = value
 
-    def norm(self):
-        return torch.linalg.vector_norm(self._data)
-
-    def unit_quat(self):
-        return QuaternionTensor(self._data / self.norm())
-
     def conjugate(self):
         x = self.x * -1
         y = self.y * -1
         z = self.z * -1
-
-        tensor = torch.stack([self.w, x, y, z])
-        quat = QuaternionTensor(tensor)
+        
+        quat = QuaternionTensor(torch.stack([self.w, x, y, z]))
         return quat 
 
     def rotate(self):
@@ -63,8 +112,5 @@ class QuaternionTensor:
         y = (self.w*other.y) - (self.x*other.z) + (self.y*other.w) + (self.z*other.x)
         z = (self.w*other.z) + (self.x*other.y) - (self.y*other.x) + (self.z*other.w)
 
-        tensor = torch.stack([w,x,y,z])
-        return QuaternionTensor(tensor)
+        return QuaternionTensor(torch.stack([w,x,y,z]))
     
-    def __repr__(self):
-        return f"QuaternionTensor: {self._data}"
